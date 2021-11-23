@@ -346,7 +346,7 @@ public class DbRouter {
                 found = findByAliasR(alias, tablesInRegion, region2Tables);
                 if (found == null) {
                     // it is impossible, except a.order_id = 2343
-                    found = findByAliasRR(alias, name, tablesInRegion, region2Tables, alias2QueryBlock);
+                    found = findByAliasRR(region, alias, name, tablesInRegion, region2Tables, alias2QueryBlock);
                     if (found == null) {
                         // it is impossible
                         throw new RuntimeException();
@@ -572,18 +572,11 @@ public class DbRouter {
      * @param alias2QueryBlock 别名->别名所在域
      * @return 表信息
      */
-    private static TableName findByAliasRR(String alias, String propName, List<TableName> list, Map<SQLSelectQueryBlock, List<TableName>> region2Tables,
+    private static TableName findByAliasRR(SQLSelectQueryBlock region, String alias, String propName, List<TableName> list, Map<SQLSelectQueryBlock, List<TableName>> region2Tables,
                                            Map<TableAliasKey, SQLSelectQueryBlock> alias2QueryBlock) {
-        if (CollectionUtils.isEmpty(list)) {
-            return null;
-        }
         TableName tableName = findByAliasR(alias, list, region2Tables);
         if (tableName == null) {
-            SQLSelectQueryBlock parentQueryBlock = list.get(0).getRegion();
-            if (parentQueryBlock == null) {
-                return null;
-            }
-            SQLSelectQueryBlock foundVirtualTable = alias2QueryBlock.get(new TableAliasKey(alias, parentQueryBlock));
+            SQLSelectQueryBlock foundVirtualTable = alias2QueryBlock.get(new TableAliasKey(alias, region));
             if (foundVirtualTable == null) {
                 return null;
             }
@@ -591,7 +584,7 @@ public class DbRouter {
             if (selectItem.getExpr() instanceof SQLPropertyExpr) {
                 String nextAlias = ((SQLPropertyExpr) selectItem.getExpr()).getOwnerName();
                 String nextPropName = ((SQLPropertyExpr) selectItem.getExpr()).getName();
-                return findByAliasRR(nextAlias, nextPropName, region2Tables.get(foundVirtualTable), region2Tables, alias2QueryBlock);
+                return findByAliasRR(foundVirtualTable,nextAlias, nextPropName, region2Tables.get(foundVirtualTable), region2Tables, alias2QueryBlock);
             }
         }
         return tableName;
