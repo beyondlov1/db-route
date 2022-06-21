@@ -868,8 +868,7 @@ public class SelectParser {
         @Override
         public String toString() {
             return "Property{" +
-                    "owner='" + owner + '\'' +
-                    ", name='" + name + '\'' +
+                    "name='" + name + '\'' +
                     ", tableName='" + tableName + '\'' +
                     ", column='" + column + '\'' +
                     '}';
