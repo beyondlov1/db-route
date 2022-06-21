@@ -6,10 +6,8 @@ import com.alibaba.druid.sql.ast.SQLObject;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.SQLBetweenExpr;
 import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
-import com.alibaba.druid.sql.ast.expr.SQLBinaryOperator;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.druid.sql.ast.expr.SQLInListExpr;
-import com.alibaba.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLQueryExpr;
 import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
@@ -102,322 +100,41 @@ public class SelectParser {
         }
 
 
-        // 处理equal
-        List<SQLBinaryOpExpr> equalConditions = visitor.getBinaryOpExprs().stream().filter(x -> x.getOperator() == SQLBinaryOperator.Equality).collect(Collectors.toList());
-        for (SQLBinaryOpExpr equalCondition : equalConditions) {
-            if (equalCondition.getLeft() instanceof SQLPropertyExpr) {
-                if (equalCondition.getRight() instanceof SQLIntegerExpr) {
-                    InIntProperty inIntProperty = new InIntProperty();
-                    inIntProperty.setOwner(((SQLPropertyExpr) equalCondition.getLeft()).getOwnerName());
-                    inIntProperty.setName(((SQLPropertyExpr) equalCondition.getLeft()).getName());
-
-                    inIntProperty.getValues().add((Integer) ((SQLIntegerExpr) equalCondition.getRight()).getValue());
-                    inIntProperty.setItem(equalCondition);
-                    properties.add(inIntProperty);
-                }
-            }
-
-            if (equalCondition.getRight() instanceof SQLPropertyExpr) {
-                if (equalCondition.getLeft() instanceof SQLIntegerExpr) {
-                    InIntProperty inIntProperty = new InIntProperty();
-                    inIntProperty.setOwner(((SQLPropertyExpr) equalCondition.getRight()).getOwnerName());
-                    inIntProperty.setName(((SQLPropertyExpr) equalCondition.getRight()).getName());
-
-                    inIntProperty.getValues().add((Integer) ((SQLIntegerExpr) equalCondition.getLeft()).getValue());
-                    inIntProperty.setItem(equalCondition);
-                    properties.add(inIntProperty);
-                }
-            }
-
-            if (equalCondition.getLeft() instanceof SQLIdentifierExpr) {
-                if (equalCondition.getRight() instanceof SQLIntegerExpr) {
-                    InIntProperty inIntProperty = new InIntProperty();
-                    inIntProperty.setOwner(null);
-                    inIntProperty.setName(((SQLIdentifierExpr) equalCondition.getLeft()).getName());
-
-                    inIntProperty.getValues().add((Integer) ((SQLIntegerExpr) equalCondition.getRight()).getValue());
-                    inIntProperty.setItem(equalCondition);
-                    properties.add(inIntProperty);
-                }
-            }
-
-
-            if (equalCondition.getRight() instanceof SQLIdentifierExpr) {
-                if (equalCondition.getLeft() instanceof SQLIntegerExpr) {
-                    InIntProperty inIntProperty = new InIntProperty();
-                    inIntProperty.setOwner(null);
-                    inIntProperty.setName(((SQLIdentifierExpr) equalCondition.getRight()).getName());
-
-                    inIntProperty.getValues().add((Integer) ((SQLIntegerExpr) equalCondition.getLeft()).getValue());
-                    inIntProperty.setItem(equalCondition);
-                    properties.add(inIntProperty);
-                }
-            }
-        }
-
-        // 处理 not equal
-        List<SQLBinaryOpExpr> notEqualConditions = visitor.getBinaryOpExprs().stream().filter(x -> x.getOperator() == SQLBinaryOperator.NotEqual).collect(Collectors.toList());
-        for (SQLBinaryOpExpr notEqualCondition : notEqualConditions) {
-            if (notEqualCondition.getLeft() instanceof SQLPropertyExpr) {
-                if (notEqualCondition.getRight() instanceof SQLIntegerExpr) {
-                    NotInIntProperty notInIntProperty = new NotInIntProperty();
-                    notInIntProperty.setOwner(((SQLPropertyExpr) notEqualCondition.getLeft()).getOwnerName());
-                    notInIntProperty.setName(((SQLPropertyExpr) notEqualCondition.getLeft()).getName());
-
-                    notInIntProperty.getValues().add((Integer) ((SQLIntegerExpr) notEqualCondition.getRight()).getValue());
-                    notInIntProperty.setItem(notEqualCondition);
-                    properties.add(notInIntProperty);
-                }
-            }
-
-            if (notEqualCondition.getRight() instanceof SQLPropertyExpr) {
-                if (notEqualCondition.getLeft() instanceof SQLIntegerExpr) {
-                    NotInIntProperty notInIntProperty = new NotInIntProperty();
-                    notInIntProperty.setOwner(((SQLPropertyExpr) notEqualCondition.getRight()).getOwnerName());
-                    notInIntProperty.setName(((SQLPropertyExpr) notEqualCondition.getRight()).getName());
-
-                    notInIntProperty.getValues().add((Integer) ((SQLIntegerExpr) notEqualCondition.getLeft()).getValue());
-                    notInIntProperty.setItem(notEqualCondition);
-                    properties.add(notInIntProperty);
-                }
-            }
-
-            if (notEqualCondition.getLeft() instanceof SQLIdentifierExpr) {
-                if (notEqualCondition.getRight() instanceof SQLIntegerExpr) {
-                    NotInIntProperty notInIntProperty = new NotInIntProperty();
-                    notInIntProperty.setOwner(null);
-                    notInIntProperty.setName(((SQLIdentifierExpr) notEqualCondition.getLeft()).getName());
-
-                    notInIntProperty.getValues().add((Integer) ((SQLIntegerExpr) notEqualCondition.getRight()).getValue());
-                    notInIntProperty.setItem(notEqualCondition);
-                    properties.add(notInIntProperty);
-                }
-            }
-
-
-            if (notEqualCondition.getRight() instanceof SQLIdentifierExpr) {
-                if (notEqualCondition.getLeft() instanceof SQLIntegerExpr) {
-                    NotInIntProperty notInIntProperty = new NotInIntProperty();
-                    notInIntProperty.setOwner(null);
-                    notInIntProperty.setName(((SQLIdentifierExpr) notEqualCondition.getRight()).getName());
-
-                    notInIntProperty.getValues().add((Integer) ((SQLIntegerExpr) notEqualCondition.getLeft()).getValue());
-                    notInIntProperty.setItem(notEqualCondition);
-                    properties.add(notInIntProperty);
-                }
-            }
-        }
-
-        // 处理 in
-        for (SQLInListExpr inListExpr : visitor.getInListCondition()) {
-            if (inListExpr.getExpr() instanceof SQLPropertyExpr) {
-                if (inListExpr.isNot()) {
-                    NotInIntProperty notInIntProperty = new NotInIntProperty();
-                    notInIntProperty.setOwner(((SQLPropertyExpr) inListExpr.getExpr()).getOwnerName());
-                    notInIntProperty.setName(((SQLPropertyExpr) inListExpr.getExpr()).getName());
-
-                    List<SQLExpr> targetList = inListExpr.getTargetList();
-                    for (SQLExpr sqlExpr : targetList) {
-                        if (sqlExpr instanceof SQLIntegerExpr) {
-                            Integer value = (Integer) ((SQLIntegerExpr) sqlExpr).getValue();
-                            notInIntProperty.getValues().add(value);
-                        }
-                    }
-                    notInIntProperty.setItem(inListExpr);
-                    properties.add(notInIntProperty);
-                } else {
-                    InIntProperty inIntProperty = new InIntProperty();
-                    inIntProperty.setOwner(((SQLPropertyExpr) inListExpr.getExpr()).getOwnerName());
-                    inIntProperty.setName(((SQLPropertyExpr) inListExpr.getExpr()).getName());
-
-                    List<SQLExpr> targetList = inListExpr.getTargetList();
-                    for (SQLExpr sqlExpr : targetList) {
-                        if (sqlExpr instanceof SQLIntegerExpr) {
-                            Integer value = (Integer) ((SQLIntegerExpr) sqlExpr).getValue();
-                            inIntProperty.getValues().add(value);
-                        }
-                    }
-                    inIntProperty.setItem(inListExpr);
-                    properties.add(inIntProperty);
-                }
-
-            }
-
-            if (inListExpr.getExpr() instanceof SQLIdentifierExpr) {
-                if (inListExpr.isNot()) {
-                    NotInIntProperty notInIntProperty = new NotInIntProperty();
-                    notInIntProperty.setOwner(null);
-                    notInIntProperty.setName(((SQLIdentifierExpr) inListExpr.getExpr()).getName());
-
-                    List<SQLExpr> targetList = inListExpr.getTargetList();
-                    for (SQLExpr sqlExpr : targetList) {
-                        if (sqlExpr instanceof SQLIntegerExpr) {
-                            Integer value = (Integer) ((SQLIntegerExpr) sqlExpr).getValue();
-                            notInIntProperty.getValues().add(value);
-                        }
-                    }
-                    notInIntProperty.setItem(inListExpr);
-                    properties.add(notInIntProperty);
-                } else {
-                    InIntProperty inIntProperty = new InIntProperty();
-                    inIntProperty.setOwner(null);
-                    inIntProperty.setName(((SQLIdentifierExpr) inListExpr.getExpr()).getName());
-
-                    List<SQLExpr> targetList = inListExpr.getTargetList();
-                    for (SQLExpr sqlExpr : targetList) {
-                        if (sqlExpr instanceof SQLIntegerExpr) {
-                            Integer value = (Integer) ((SQLIntegerExpr) sqlExpr).getValue();
-                            inIntProperty.getValues().add(value);
-                        }
-                    }
-                    inIntProperty.setItem(inListExpr);
-                    properties.add(inIntProperty);
-                }
-            }
-        }
-
-
-        // 处理 > < ?
-        List<SQLBinaryOpExpr> gtConditions = visitor.getBinaryOpExprs().stream()
-                .filter(x -> x.getOperator() == SQLBinaryOperator.GreaterThan).collect(Collectors.toList());
-        for (SQLBinaryOpExpr gtCondition : gtConditions) {
-            SQLExpr left = gtCondition.getLeft();
-            if (left instanceof SQLPropertyExpr) {
-                SQLExpr right = gtCondition.getRight();
-                if (right instanceof SQLIntegerExpr) {
-                    RangeIntProperty rangeIntProperty = new RangeIntProperty();
-                    rangeIntProperty.setOwner(((SQLPropertyExpr) left).getOwnerName());
-                    rangeIntProperty.setName(((SQLPropertyExpr) left).getName());
-
-                    rangeIntProperty.setItem(gtCondition);
-                    rangeIntProperty.setLow((Integer) ((SQLIntegerExpr) right).getValue());
-                    rangeIntProperty.setIncludeLow(false);
-                    properties.add(rangeIntProperty);
-                }
-            }
-        }
-
-        List<SQLBinaryOpExpr> geConditions = visitor.getBinaryOpExprs().stream()
-                .filter(x -> x.getOperator() == SQLBinaryOperator.GreaterThanOrEqual).collect(Collectors.toList());
-        for (SQLBinaryOpExpr geCondition : geConditions) {
-            SQLExpr left = geCondition.getLeft();
-            if (left instanceof SQLPropertyExpr) {
-                SQLExpr right = geCondition.getRight();
-                if (right instanceof SQLIntegerExpr) {
-                    RangeIntProperty rangeIntProperty = new RangeIntProperty();
-                    rangeIntProperty.setOwner(((SQLPropertyExpr) left).getOwnerName());
-                    rangeIntProperty.setName(((SQLPropertyExpr) left).getName());
-
-                    rangeIntProperty.setItem(geCondition);
-                    rangeIntProperty.setLow((Integer) ((SQLIntegerExpr) right).getValue());
-                    rangeIntProperty.setIncludeLow(true);
-                    properties.add(rangeIntProperty);
-                }
-            }
-        }
-
-
-        List<SQLBinaryOpExpr> ltConditions = visitor.getBinaryOpExprs().stream()
-                .filter(x -> x.getOperator() == SQLBinaryOperator.LessThan).collect(Collectors.toList());
-        for (SQLBinaryOpExpr ltCondition : ltConditions) {
-            SQLExpr left = ltCondition.getLeft();
-            if (left instanceof SQLPropertyExpr) {
-                SQLExpr right = ltCondition.getRight();
-                if (right instanceof SQLIntegerExpr) {
-                    RangeIntProperty rangeIntProperty = new RangeIntProperty();
-                    rangeIntProperty.setOwner(((SQLPropertyExpr) left).getOwnerName());
-                    rangeIntProperty.setName(((SQLPropertyExpr) left).getName());
-
-                    rangeIntProperty.setItem(ltCondition);
-                    rangeIntProperty.setHigh((Integer) ((SQLIntegerExpr) right).getValue());
-                    rangeIntProperty.setIncludeHigh(false);
-                    properties.add(rangeIntProperty);
-                }
-            }
-        }
-
-        List<SQLBinaryOpExpr> leConditions = visitor.getBinaryOpExprs().stream()
-                .filter(x -> x.getOperator() == SQLBinaryOperator.LessThanOrEqual).collect(Collectors.toList());
-        for (SQLBinaryOpExpr leCondition : leConditions) {
-            SQLExpr left = leCondition.getLeft();
-            if (left instanceof SQLPropertyExpr) {
-                SQLExpr right = leCondition.getRight();
-                if (right instanceof SQLIntegerExpr) {
-                    RangeIntProperty rangeIntProperty = new RangeIntProperty();
-                    rangeIntProperty.setOwner(((SQLPropertyExpr) left).getOwnerName());
-                    rangeIntProperty.setName(((SQLPropertyExpr) left).getName());
-
-                    rangeIntProperty.setItem(leCondition);
-                    rangeIntProperty.setHigh((Integer) ((SQLIntegerExpr) right).getValue());
-                    rangeIntProperty.setIncludeHigh(true);
-                    properties.add(rangeIntProperty);
-                }
-            }
-        }
-
-        // 处理 between ?
-        List<SQLBetweenExpr> betweenConditions = visitor.getSqlBetweenExprs();
-        for (SQLBetweenExpr betweenCondition : betweenConditions) {
-            SQLExpr testExpr = betweenCondition.getTestExpr();
-            if (testExpr instanceof SQLPropertyExpr) {
-                RangeIntProperty rangeIntProperty = new RangeIntProperty();
-                rangeIntProperty.setOwner(((SQLPropertyExpr) testExpr).getOwnerName());
-                rangeIntProperty.setName(((SQLPropertyExpr) testExpr).getName());
-
-                rangeIntProperty.setItem(betweenCondition);
-                SQLExpr left = betweenCondition.getBeginExpr();
-                if (left instanceof SQLIntegerExpr) {
-                    rangeIntProperty.setLow((Integer) ((SQLIntegerExpr) left).getValue());
-                    rangeIntProperty.setIncludeLow(true);
-                }
-                SQLExpr right = betweenCondition.getEndExpr();
-                if (right instanceof SQLIntegerExpr) {
-                    rangeIntProperty.setHigh((Integer) ((SQLIntegerExpr) right).getValue());
-                    rangeIntProperty.setIncludeHigh(true);
-                }
-                properties.add(rangeIntProperty);
-            }
-        }
-
-
-        List<SQLBinaryOpExpr> joinConditions = new ArrayList<>();
-        List<SQLJoinTableSource> joinTableSources = visitor.getJoinTableSources();
-        for (SQLJoinTableSource joinTableSource : joinTableSources) {
-            SQLExpr condition = joinTableSource.getCondition();
-            findChildren(condition, SQLBinaryOpExpr.class, joinConditions);
-        }
-
-        for (SQLBinaryOpExpr joinCondition : joinConditions) {
-            SQLExpr left = joinCondition.getLeft();
+        for (SQLBinaryOpExpr condition : visitor.getBinaryOpExprs()) {
+            SQLExpr left = condition.getLeft();
             if (left instanceof SQLPropertyExpr){
-                ConditionProperty conditionProperty = new ConditionProperty();
-                conditionProperty.setItem(joinCondition);
+                BinaryOpConditionProperty conditionProperty = new BinaryOpConditionProperty();
+                conditionProperty.setItem(condition);
                 conditionProperty.setOwner(((SQLPropertyExpr) left).getOwnerName());
                 conditionProperty.setName(((SQLPropertyExpr) left).getName());
+                conditionProperty.setLeft(true);
                 properties.add(conditionProperty);
             }
 
             if (left instanceof SQLIdentifierExpr){
-                ConditionProperty conditionProperty = new ConditionProperty();
-                conditionProperty.setItem(joinCondition);
+                BinaryOpConditionProperty conditionProperty = new BinaryOpConditionProperty();
+                conditionProperty.setItem(condition);
                 conditionProperty.setOwner(null);
                 conditionProperty.setName(((SQLIdentifierExpr) left).getName());
+                conditionProperty.setLeft(true);
                 properties.add(conditionProperty);
             }
-            SQLExpr right = joinCondition.getRight();
+            SQLExpr right = condition.getRight();
             if (right instanceof SQLPropertyExpr){
-                ConditionProperty conditionProperty = new ConditionProperty();
-                conditionProperty.setItem(joinCondition);
+                BinaryOpConditionProperty conditionProperty = new BinaryOpConditionProperty();
+                conditionProperty.setItem(condition);
                 conditionProperty.setOwner(((SQLPropertyExpr) right).getOwnerName());
                 conditionProperty.setName(((SQLPropertyExpr) right).getName());
+                conditionProperty.setLeft(false);
                 properties.add(conditionProperty);
             }
 
             if (right instanceof SQLIdentifierExpr){
-                ConditionProperty conditionProperty = new ConditionProperty();
-                conditionProperty.setItem(joinCondition);
+                BinaryOpConditionProperty conditionProperty = new BinaryOpConditionProperty();
+                conditionProperty.setItem(condition);
                 conditionProperty.setOwner(null);
                 conditionProperty.setName(((SQLIdentifierExpr) right).getName());
+                conditionProperty.setLeft(false);
                 properties.add(conditionProperty);
             }
         }
@@ -425,7 +142,14 @@ public class SelectParser {
         properties.forEach(x -> {
             x.setName(org.apache.commons.lang3.StringUtils.strip(x.getName(), "`").toLowerCase());
             x.setColumn(x.getName());
-            x.setBottomItem(x.getItem());
+            if (x instanceof BinaryOpConditionProperty){
+                SQLBinaryOpExpr condition = (SQLBinaryOpExpr) x.getItem();
+                if (((BinaryOpConditionProperty) x).isLeft()){
+                    x.setBottomItem(condition.getLeft());
+                }else {
+                    x.setBottomItem(condition.getRight());
+                }
+            }
         });
 
 
@@ -464,44 +188,42 @@ public class SelectParser {
             }
         }
 
-        for (Property property : properties.stream().filter(x-> x.getBottomItem() instanceof SQLSelectItem).collect(Collectors.toList())) {
+        for (Property property : properties) {
             Map<String, String> replaceMapping = focusColumns.get(property.getTableName());
             if (replaceMapping == null || !replaceMapping.containsKey(property.getColumn())){
                 continue;
             }
-            SQLSelectItem regionSelect = (SQLSelectItem) property.getBottomItem();
-            if (regionSelect.getAlias() == null){
-                regionSelect.setAlias(property.getColumn());
+
+            if (property.getBottomItem() instanceof SQLSelectItem){
+                SQLSelectItem regionSelect = (SQLSelectItem) property.getBottomItem();
+                if (regionSelect.getAlias() == null){
+                    regionSelect.setAlias(property.getColumn());
+                }
+
+                String encryptedName = replaceMapping.get(property.getColumn());
+                if (regionSelect.getExpr() instanceof SQLIdentifierExpr){
+                    ((SQLIdentifierExpr) regionSelect.getExpr()).setName(encryptedName);
+                }
+
+                if (regionSelect.getExpr() instanceof SQLPropertyExpr){
+                    ((SQLPropertyExpr) regionSelect.getExpr()).setName(encryptedName);
+                }
             }
 
-            String encryptedName = replaceMapping.get(property.getColumn());
-            if (regionSelect.getExpr() instanceof SQLIdentifierExpr){
-                ((SQLIdentifierExpr) regionSelect.getExpr()).setName(encryptedName);
+            if (property.getBottomItem() instanceof SQLPropertyExpr){
+                String encryptedName = replaceMapping.get(property.getColumn());
+                SQLPropertyExpr sqlPropertyExpr = (SQLPropertyExpr) property.getBottomItem();
+                if (sqlPropertyExpr!= null){
+                    sqlPropertyExpr.setName(encryptedName);
+                }
             }
 
-            if (regionSelect.getExpr() instanceof SQLPropertyExpr){
-                ((SQLPropertyExpr) regionSelect.getExpr()).setName(encryptedName);
-            }
-        }
-
-        for (Property property : properties.stream().filter(x-> x.getBottomItem() instanceof SQLBinaryOpExpr).collect(Collectors.toList())) {
-            Map<String, String> replaceMapping = focusColumns.get(property.getTableName());
-            if (replaceMapping == null || !replaceMapping.containsKey(property.getColumn()) ){
-                continue;
-            }
-
-            String encryptedName = replaceMapping.get(property.getColumn());
-            SQLBinaryOpExpr condition = (SQLBinaryOpExpr) property.getBottomItem();
-
-            SQLPropertyExpr sqlPropertyExpr = findFirstChild(condition, SQLPropertyExpr.class);
-            if (sqlPropertyExpr!= null){
-                sqlPropertyExpr.setName(encryptedName);
-                continue;
-            }
-
-            SQLIdentifierExpr sqlIdentifierExpr = findFirstChild(condition, SQLIdentifierExpr.class);
-            if (sqlIdentifierExpr!= null){
-                sqlIdentifierExpr.setName(encryptedName);
+            if (property.getBottomItem() instanceof SQLIdentifierExpr){
+                String encryptedName = replaceMapping.get(property.getColumn());
+                SQLIdentifierExpr sqlIdentifierExpr = (SQLIdentifierExpr) property.getBottomItem();
+                if (sqlIdentifierExpr!= null){
+                    sqlIdentifierExpr.setName(encryptedName);
+                }
             }
         }
 
@@ -537,6 +259,9 @@ public class SelectParser {
 
 
     private static  <T> T findFirstChild(SQLExpr sqlExpr, Class<T> tClass){
+        if (tClass.isAssignableFrom(sqlExpr.getClass())){
+            return (T) sqlExpr;
+        }
         List<SQLObject> children = sqlExpr.getChildren();
         if (CollectionUtils.isEmpty(children)){
             return null;
@@ -773,6 +498,19 @@ public class SelectParser {
 
     private static class ConditionProperty extends Property{
     }
+
+    private static class BinaryOpConditionProperty extends ConditionProperty{
+        private boolean left;
+
+        public boolean isLeft() {
+            return left;
+        }
+
+        public void setLeft(boolean left) {
+            this.left = left;
+        }
+    }
+
 
     private static class SelectProperty extends Property {
 
