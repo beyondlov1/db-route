@@ -8,6 +8,7 @@ import com.alibaba.druid.sql.ast.expr.SQLBetweenExpr;
 import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.druid.sql.ast.expr.SQLInListExpr;
+import com.alibaba.druid.sql.ast.expr.SQLInSubQueryExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLQueryExpr;
 import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
@@ -21,7 +22,6 @@ import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 public class SelectParser {
 
-    public static Result parse(String sql, Map<String, Map<String,String>> focusColumns) throws IOException {
+    public static Result parse(String sql, Map<String, Map<String,String>> focusColumns) {
 
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
@@ -139,9 +139,101 @@ public class SelectParser {
             }
         }
 
+        // 处理 in / not in
+        for (SQLInListExpr inListExpr : visitor.getInListCondition()) {
+            if (inListExpr.getExpr() instanceof SQLPropertyExpr) {
+                if (inListExpr.isNot()) {
+                    NotInProperty notInProperty = new NotInProperty();
+                    notInProperty.setOwner(((SQLPropertyExpr) inListExpr.getExpr()).getOwnerName());
+                    notInProperty.setName(((SQLPropertyExpr) inListExpr.getExpr()).getName());
+                    notInProperty.setItem(inListExpr);
+                    properties.add(notInProperty);
+                } else {
+                    InProperty inProperty = new InProperty();
+                    inProperty.setOwner(((SQLPropertyExpr) inListExpr.getExpr()).getOwnerName());
+                    inProperty.setName(((SQLPropertyExpr) inListExpr.getExpr()).getName());
+                    inProperty.setItem(inListExpr);
+                    properties.add(inProperty);
+                }
+            }
+
+            if (inListExpr.getExpr() instanceof SQLIdentifierExpr) {
+                if (inListExpr.isNot()) {
+                    NotInProperty notInProperty = new NotInProperty();
+                    notInProperty.setOwner(null);
+                    notInProperty.setName(((SQLIdentifierExpr) inListExpr.getExpr()).getName());
+                    notInProperty.setItem(inListExpr);
+                    properties.add(notInProperty);
+                } else {
+                    InProperty inProperty = new InProperty();
+                    inProperty.setOwner(null);
+                    inProperty.setName(((SQLIdentifierExpr) inListExpr.getExpr()).getName());
+                    inProperty.setItem(inListExpr);
+                    properties.add(inProperty);
+                }
+            }
+        }
+
+        // 处理 in / not in subQuery
+        for (SQLInSubQueryExpr inSubQueryExpr : visitor.getInSubQueryCondition()) {
+            if (inSubQueryExpr.getExpr() instanceof SQLPropertyExpr) {
+                if (inSubQueryExpr.isNot()) {
+                    NotInSubQueryProperty notInProperty = new NotInSubQueryProperty();
+                    notInProperty.setOwner(((SQLPropertyExpr) inSubQueryExpr.getExpr()).getOwnerName());
+                    notInProperty.setName(((SQLPropertyExpr) inSubQueryExpr.getExpr()).getName());
+                    notInProperty.setItem(inSubQueryExpr);
+                    properties.add(notInProperty);
+                } else {
+                    InSubQueryProperty inProperty = new InSubQueryProperty();
+                    inProperty.setOwner(((SQLPropertyExpr) inSubQueryExpr.getExpr()).getOwnerName());
+                    inProperty.setName(((SQLPropertyExpr) inSubQueryExpr.getExpr()).getName());
+                    inProperty.setItem(inSubQueryExpr);
+                    properties.add(inProperty);
+                }
+            }
+
+            if (inSubQueryExpr.getExpr() instanceof SQLIdentifierExpr) {
+                if (inSubQueryExpr.isNot()) {
+                    NotInSubQueryProperty notInProperty = new NotInSubQueryProperty();
+                    notInProperty.setOwner(null);
+                    notInProperty.setName(((SQLIdentifierExpr) inSubQueryExpr.getExpr()).getName());
+                    notInProperty.setItem(inSubQueryExpr);
+                    properties.add(notInProperty);
+                } else {
+                    InSubQueryProperty inProperty = new InSubQueryProperty();
+                    inProperty.setOwner(null);
+                    inProperty.setName(((SQLIdentifierExpr) inSubQueryExpr.getExpr()).getName());
+                    inProperty.setItem(inSubQueryExpr);
+                    properties.add(inProperty);
+                }
+            }
+        }
+
+        // 处理 between ?
+        List<SQLBetweenExpr> betweenConditions = visitor.getSqlBetweenExprs();
+        for (SQLBetweenExpr betweenCondition : betweenConditions) {
+            SQLExpr testExpr = betweenCondition.getTestExpr();
+            if (testExpr instanceof SQLPropertyExpr) {
+                BetweenProperty betweenProperty = new BetweenProperty();
+                betweenProperty.setOwner(((SQLPropertyExpr) testExpr).getOwnerName());
+                betweenProperty.setName(((SQLPropertyExpr) testExpr).getName());
+                betweenProperty.setItem(betweenCondition);
+                properties.add(betweenProperty);
+            }
+
+            if (testExpr instanceof SQLIdentifierExpr) {
+                BetweenProperty betweenProperty = new BetweenProperty();
+                betweenProperty.setOwner(null);
+                betweenProperty.setName(((SQLIdentifierExpr) testExpr).getName());
+                betweenProperty.setItem(betweenCondition);
+                properties.add(betweenProperty);
+            }
+        }
+
         properties.forEach(x -> {
             x.setName(org.apache.commons.lang3.StringUtils.strip(x.getName(), "`").toLowerCase());
             x.setColumn(x.getName());
+            x.setBottomItem(x.getItem());
             if (x instanceof BinaryOpConditionProperty){
                 SQLBinaryOpExpr condition = (SQLBinaryOpExpr) x.getItem();
                 if (((BinaryOpConditionProperty) x).isLeft()){
@@ -149,6 +241,20 @@ public class SelectParser {
                 }else {
                     x.setBottomItem(condition.getRight());
                 }
+            }
+
+            if (x instanceof BetweenProperty){
+                SQLBetweenExpr condition = (SQLBetweenExpr) x.getItem();
+                x.setBottomItem(condition.getTestExpr());
+            }
+
+            if (x instanceof InProperty || x instanceof NotInProperty){
+                SQLInListExpr condition = (SQLInListExpr) x.getItem();
+                x.setBottomItem(condition.getExpr());
+            }
+            if (x instanceof InSubQueryProperty || x instanceof NotInSubQueryProperty){
+                SQLInSubQueryExpr condition = (SQLInSubQueryExpr) x.getItem();
+                x.setBottomItem(condition.getExpr());
             }
         });
 
@@ -387,73 +493,26 @@ public class SelectParser {
         }
     }
 
-    private static class RangeIntProperty extends ConditionProperty {
-        private Integer low;
-        private Integer high;
-        private boolean includeLow;
-        private boolean includeHigh;
-
-        public Integer getLow() {
-            return low;
-        }
-
-        public void setLow(Integer low) {
-            this.low = low;
-        }
-
-        public Integer getHigh() {
-            return high;
-        }
-
-        public void setHigh(Integer high) {
-            this.high = high;
-        }
-
-        public boolean isIncludeLow() {
-            return includeLow;
-        }
-
-        public void setIncludeLow(boolean includeLow) {
-            this.includeLow = includeLow;
-        }
-
-        public boolean isIncludeHigh() {
-            return includeHigh;
-        }
-
-        public void setIncludeHigh(boolean includeHigh) {
-            this.includeHigh = includeHigh;
-        }
+    private static class BetweenProperty extends ConditionProperty {
     }
 
-    private static class NotInIntProperty extends ConditionProperty {
-        private List<Integer> values = new ArrayList<>();
-
-        public List<Integer> getValues() {
-            return values;
-        }
-
-        public void setValues(List<Integer> values) {
-            this.values = values;
-        }
+    private static class NotInSubQueryProperty extends ConditionProperty {
     }
 
-    private static class InIntProperty extends ConditionProperty {
-        private List<Integer> values = new ArrayList<>();
+    private static class InSubQueryProperty extends ConditionProperty {
+    }
 
-        public List<Integer> getValues() {
-            return values;
-        }
+    private static class NotInProperty extends ConditionProperty {
+    }
 
-        public void setValues(List<Integer> values) {
-            this.values = values;
-        }
+    private static class InProperty extends ConditionProperty {
     }
 
     private static class ConditionProperty extends Property{
     }
 
     private static class BinaryOpConditionProperty extends ConditionProperty{
+
         private boolean left;
 
         public boolean isLeft() {
@@ -656,6 +715,8 @@ public class SelectParser {
 
         private final List<SQLInListExpr> inListCondition = new ArrayList<>();
 
+        private final List<SQLInSubQueryExpr> inSubQueryCondition = new ArrayList<>();
+
         private final List<SQLSelectQueryBlock> selectQueryBlocks = new ArrayList<>();
 
         private final List<SQLSelectItem> selectItems = new ArrayList<>();
@@ -682,6 +743,12 @@ public class SelectParser {
         @Override
         public boolean visit(SQLInListExpr x) {
             inListCondition.add(x);
+            return true;
+        }
+
+        @Override
+        public boolean visit(SQLInSubQueryExpr x) {
+            inSubQueryCondition.add(x);
             return true;
         }
 
@@ -732,6 +799,9 @@ public class SelectParser {
             return selectItems;
         }
 
+        public List<SQLInSubQueryExpr> getInSubQueryCondition() {
+            return inSubQueryCondition;
+        }
     }
 
     private static void complement(TableName tableName) {
