@@ -236,52 +236,6 @@ public class SelectParser {
         return result;
     }
 
-    private static <T> void  findChildren(SQLExpr sqlExpr, Class<T> tClass, List<T> list) {
-        if (tClass.isAssignableFrom(sqlExpr.getClass())){
-            list.add((T) sqlExpr);
-            return;
-        }
-        List<SQLObject> children = sqlExpr.getChildren();
-        if (CollectionUtils.isEmpty(children)){
-            return;
-        }
-        for (SQLObject child : children) {
-            if (tClass.isAssignableFrom(child.getClass())){
-                list.add((T) child);
-            }
-        }
-        for (SQLObject child : children) {
-            if (child instanceof SQLExpr){
-                findChildren((SQLExpr) child, tClass, list);
-            }
-        }
-    }
-
-
-    private static  <T> T findFirstChild(SQLExpr sqlExpr, Class<T> tClass){
-        if (tClass.isAssignableFrom(sqlExpr.getClass())){
-            return (T) sqlExpr;
-        }
-        List<SQLObject> children = sqlExpr.getChildren();
-        if (CollectionUtils.isEmpty(children)){
-            return null;
-        }
-        for (SQLObject child : children) {
-            if (tClass.isAssignableFrom(child.getClass())){
-                return (T) child;
-            }
-        }
-        for (SQLObject child : children) {
-            if (child instanceof SQLExpr){
-                T found = findFirstChild((SQLExpr) child, tClass);
-                if (found != null){
-                    return found;
-                }
-            }
-        }
-        return null;
-    }
-
 
 
     /**
@@ -292,7 +246,7 @@ public class SelectParser {
      * @param list             当前域下的表信息 (不包括临时表)
      * @param region2Tables    域对应的表  (不包括临时表)
      * @param alias2QueryBlock 别名->别名所在域
-     * @param nonAliasQueryBlocks
+     * @param nonAliasQueryBlocks 没有别名的子查询
      * @return 表信息
      */
     private static TableName findByAliasRR(SQLSelectQueryBlock region, String alias, String propName, Property property, List<TableName> list, Map<SQLSelectQueryBlock, List<TableName>> region2Tables,
@@ -510,7 +464,6 @@ public class SelectParser {
             this.left = left;
         }
     }
-
 
     private static class SelectProperty extends Property {
 
