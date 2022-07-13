@@ -12,7 +12,7 @@ import java.util.List;
  */
 public class DruidParseUtil {
 
-    private static <T> void  findChildren(SQLExpr sqlExpr, Class<T> tClass, List<T> list) {
+    public static <T> void  findChildren(SQLExpr sqlExpr, Class<T> tClass, List<T> list) {
         if (tClass.isAssignableFrom(sqlExpr.getClass())){
             list.add((T) sqlExpr);
             return;
@@ -33,7 +33,7 @@ public class DruidParseUtil {
         }
     }
 
-    private static  <T> T findFirstChild(SQLExpr sqlExpr, Class<T> tClass){
+    public static  <T> T findFirstChild(SQLExpr sqlExpr, Class<T> tClass){
         if (tClass.isAssignableFrom(sqlExpr.getClass())){
             return (T) sqlExpr;
         }

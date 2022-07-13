@@ -9,6 +9,7 @@ import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.druid.sql.ast.expr.SQLInListExpr;
 import com.alibaba.druid.sql.ast.expr.SQLInSubQueryExpr;
+import com.alibaba.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLQueryExpr;
 import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
@@ -97,6 +98,39 @@ public class SelectParser {
             property.setBottomItem(selectItem);
             property.setRoot(rootSelectItems.contains(selectItem));
             properties.add(property);
+        }
+
+        for (SQLSelectItem selectItem : allSelectItems) {
+            SelectProperty property = new SelectProperty();
+            SQLExpr expr = selectItem.getExpr();
+            SQLMethodInvokeExpr methodInvokeExpr = DruidParseUtil.findFirstChild(expr, SQLMethodInvokeExpr.class);
+            if (methodInvokeExpr != null){
+                List<SQLPropertyExpr> sqlProperties = new ArrayList<>();
+                DruidParseUtil.findChildren(methodInvokeExpr, SQLPropertyExpr.class, sqlProperties);
+                if (CollectionUtils.isNotEmpty(sqlProperties)){
+                    for (SQLPropertyExpr sqlProperty : sqlProperties) {
+                        property.setName(sqlProperty.getName());
+                        property.setOwner(sqlProperty.getOwnerName());
+                        property.setAlias(selectItem.getAlias());
+                        property.setItem(selectItem);
+                        property.setBottomItem(selectItem);
+                        property.setRoot(rootSelectItems.contains(selectItem));
+                        properties.add(property);
+                    }
+                }else{
+                    List<SQLIdentifierExpr> sqlIdentifierExprs = new ArrayList<>();
+                    DruidParseUtil.findChildren(methodInvokeExpr, SQLIdentifierExpr.class, sqlIdentifierExprs);
+                    for (SQLIdentifierExpr sqlIdentifierExpr : sqlIdentifierExprs) {
+                        property.setName(sqlIdentifierExpr.getName());
+                        property.setOwner(null);
+                        property.setAlias(selectItem.getAlias());
+                        property.setItem(selectItem);
+                        property.setBottomItem(selectItem);
+                        property.setRoot(rootSelectItems.contains(selectItem));
+                        properties.add(property);
+                    }
+                }
+            }
         }
 
 
