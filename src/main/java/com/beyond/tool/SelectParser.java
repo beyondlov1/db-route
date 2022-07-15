@@ -216,10 +216,10 @@ public class SelectParser {
         for (SQLSelectItem selectItem : allSelectItems) {
             SelectProperty property = new SelectProperty();
             SQLExpr expr = selectItem.getExpr();
-            SQLMethodInvokeExpr methodInvokeExpr = DruidParseUtil.findFirstChild(expr, SQLMethodInvokeExpr.class);
+            SQLMethodInvokeExpr methodInvokeExpr = findFirstChild(expr, SQLMethodInvokeExpr.class);
             if (methodInvokeExpr != null) {
                 List<SQLPropertyExpr> sqlProperties = new ArrayList<>();
-                DruidParseUtil.findChildren(methodInvokeExpr, SQLPropertyExpr.class, sqlProperties);
+                findChildren(methodInvokeExpr, SQLPropertyExpr.class, sqlProperties);
                 if (CollectionUtils.isNotEmpty(sqlProperties)) {
                     for (SQLPropertyExpr sqlProperty : sqlProperties) {
                         property.setName(sqlProperty.getName());
@@ -232,7 +232,7 @@ public class SelectParser {
                     }
                 } else {
                     List<SQLIdentifierExpr> sqlIdentifierExprs = new ArrayList<>();
-                    DruidParseUtil.findChildren(methodInvokeExpr, SQLIdentifierExpr.class, sqlIdentifierExprs);
+                    findChildren(methodInvokeExpr, SQLIdentifierExpr.class, sqlIdentifierExprs);
                     for (SQLIdentifierExpr sqlIdentifierExpr : sqlIdentifierExprs) {
                         property.setName(sqlIdentifierExpr.getName());
                         property.setOwner(null);
@@ -663,6 +663,51 @@ public class SelectParser {
                 }
             }
 
+        }
+        return null;
+    }
+
+    private static <T> void  findChildren(SQLExpr sqlExpr, Class<T> tClass, List<T> list) {
+        if (tClass.isAssignableFrom(sqlExpr.getClass())){
+            list.add((T) sqlExpr);
+            return;
+        }
+        List<SQLObject> children = sqlExpr.getChildren();
+        if (CollectionUtils.isEmpty(children)){
+            return;
+        }
+        for (SQLObject child : children) {
+            if (tClass.isAssignableFrom(child.getClass())){
+                list.add((T) child);
+            }
+        }
+        for (SQLObject child : children) {
+            if (child instanceof SQLExpr){
+                findChildren((SQLExpr) child, tClass, list);
+            }
+        }
+    }
+
+    private static  <T> T findFirstChild(SQLExpr sqlExpr, Class<T> tClass){
+        if (tClass.isAssignableFrom(sqlExpr.getClass())){
+            return (T) sqlExpr;
+        }
+        List<SQLObject> children = sqlExpr.getChildren();
+        if (CollectionUtils.isEmpty(children)){
+            return null;
+        }
+        for (SQLObject child : children) {
+            if (tClass.isAssignableFrom(child.getClass())){
+                return (T) child;
+            }
+        }
+        for (SQLObject child : children) {
+            if (child instanceof SQLExpr){
+                T found = findFirstChild((SQLExpr) child, tClass);
+                if (found != null){
+                    return found;
+                }
+            }
         }
         return null;
     }
