@@ -6,12 +6,15 @@ import com.alibaba.druid.sql.ast.SQLObject;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.SQLBetweenExpr;
 import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
+import com.alibaba.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.druid.sql.ast.expr.SQLInListExpr;
 import com.alibaba.druid.sql.ast.expr.SQLInSubQueryExpr;
+import com.alibaba.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLQueryExpr;
+import com.alibaba.druid.sql.ast.expr.SQLTextLiteralExpr;
 import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.druid.sql.ast.statement.SQLJoinTableSource;
 import com.alibaba.druid.sql.ast.statement.SQLSelectItem;
@@ -28,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -36,7 +40,7 @@ import java.util.stream.Collectors;
  */
 public class SelectParser {
 
-    public static Result parse(String sql, Map<String, Map<String,String>> focusColumns) {
+    public static Result parse(String sql, Map<String, Map<String,FocusParam>> focusColumns) {
 
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
@@ -312,7 +316,7 @@ public class SelectParser {
             } else {
                 //检查表结构中的字段名,确认是哪个表的字段
                 for (TableName tableName : tablesInRegion) {
-                    Map<String, String> replaceMapping = focusColumns.get(tableName.getTableName());
+                    Map<String, FocusParam> replaceMapping = focusColumns.get(tableName.getTableName());
                     if (replaceMapping != null && replaceMapping.containsKey(name)) {
                         found = tableName;
                         break;
@@ -329,7 +333,7 @@ public class SelectParser {
         }
 
         for (Property property : properties) {
-            Map<String, String> replaceMapping = focusColumns.get(property.getTableName());
+            Map<String, FocusParam> replaceMapping = focusColumns.get(property.getTableName());
             if (replaceMapping == null || !replaceMapping.containsKey(property.getColumn())){
                 continue;
             }
@@ -340,7 +344,8 @@ public class SelectParser {
                     regionSelect.setAlias(property.getColumn());
                 }
 
-                String encryptedName = replaceMapping.get(property.getColumn());
+                FocusParam focusParam = replaceMapping.get(property.getColumn());
+                String encryptedName = focusParam.getsName();
                 if (regionSelect.getExpr() instanceof SQLIdentifierExpr){
                     ((SQLIdentifierExpr) regionSelect.getExpr()).setName(encryptedName);
                 }
@@ -351,18 +356,22 @@ public class SelectParser {
             }
 
             if (property.getBottomItem() instanceof SQLPropertyExpr){
-                String encryptedName = replaceMapping.get(property.getColumn());
+                FocusParam focusParam = replaceMapping.get(property.getColumn());
+                String encryptedName = focusParam.getsName();
                 SQLPropertyExpr sqlPropertyExpr = (SQLPropertyExpr) property.getBottomItem();
                 if (sqlPropertyExpr!= null){
                     sqlPropertyExpr.setName(encryptedName);
+                    encryptProperty(property,focusParam);
                 }
             }
 
             if (property.getBottomItem() instanceof SQLIdentifierExpr){
-                String encryptedName = replaceMapping.get(property.getColumn());
+                FocusParam focusParam = replaceMapping.get(property.getColumn());
+                String encryptedName = focusParam.getsName();
                 SQLIdentifierExpr sqlIdentifierExpr = (SQLIdentifierExpr) property.getBottomItem();
                 if (sqlIdentifierExpr!= null){
                     sqlIdentifierExpr.setName(encryptedName);
+                    encryptProperty(property,focusParam);
                 }
             }
         }
@@ -376,6 +385,64 @@ public class SelectParser {
         return result;
     }
 
+
+    private static void encryptProperty(Property property, FocusParam focusParam){
+        if (property instanceof BinaryOpConditionProperty){
+            SQLBinaryOpExpr item = (SQLBinaryOpExpr) property.getItem();
+            safeReplace(item.getLeft(),focusParam);
+            safeReplace(item.getRight(),focusParam);
+        }
+
+        if (property instanceof BetweenProperty){
+            SQLBetweenExpr item = (SQLBetweenExpr) property.getItem();
+            safeReplace(item.getBeginExpr(),focusParam);
+            safeReplace(item.getEndExpr(),focusParam);
+        }
+
+        if (property instanceof InProperty){
+            SQLInListExpr item = (SQLInListExpr) property.getItem();
+            List<SQLExpr> targetList = item.getTargetList();
+            for (SQLExpr sqlExpr : targetList) {
+                safeReplace(sqlExpr,focusParam);
+            }
+        }
+    }
+
+    private static void safeReplace(SQLExpr sqlExpr, FocusParam focusParam){
+        if (sqlExpr instanceof SQLTextLiteralExpr){
+            String origin = ((SQLTextLiteralExpr) sqlExpr).getText();
+            ((SQLTextLiteralExpr) sqlExpr).setText(focusParam.getM().apply(origin, focusParam.getKey()));
+        }
+        if (sqlExpr instanceof SQLIntegerExpr){
+            Number number = ((SQLIntegerExpr) sqlExpr).getNumber();
+            String s = number.toString();
+            SQLCharExpr sqlCharExpr = new SQLCharExpr();
+            sqlCharExpr.setParent(sqlExpr.getParent());
+            sqlCharExpr.setText(focusParam.getM().apply(s, focusParam.getKey()));
+
+            if (sqlExpr.getParent() instanceof SQLBinaryOpExpr){
+                if (sqlExpr == ((SQLBinaryOpExpr) sqlExpr.getParent()).getLeft()){
+                    ((SQLBinaryOpExpr) sqlExpr.getParent()).setLeft(sqlCharExpr);
+                }
+                if (sqlExpr == ((SQLBinaryOpExpr) sqlExpr.getParent()).getRight()){
+                    ((SQLBinaryOpExpr) sqlExpr.getParent()).setRight(sqlCharExpr);
+                }
+            }
+
+            if (sqlExpr.getParent() instanceof SQLInListExpr){
+                ((SQLInListExpr) sqlExpr.getParent()).replace(sqlExpr, sqlCharExpr);
+            }
+
+            if (sqlExpr.getParent() instanceof SQLBetweenExpr){
+                if (sqlExpr == ((SQLBetweenExpr) sqlExpr.getParent()).getBeginExpr()){
+                    ((SQLBetweenExpr) sqlExpr.getParent()).setBeginExpr(sqlCharExpr);
+                }
+                if (sqlExpr == ((SQLBetweenExpr) sqlExpr.getParent()).getEndExpr()){
+                    ((SQLBetweenExpr) sqlExpr.getParent()).setEndExpr(sqlCharExpr);
+                }
+            }
+        }
+    }
 
 
     /**
@@ -486,6 +553,42 @@ public class SelectParser {
 
         }
         return null;
+    }
+
+    public static class FocusParam{
+        private String sName;
+        private String key;
+        private BiFunction<String, String, String> m;
+
+        public FocusParam(String sName, String key, BiFunction<String, String, String> m) {
+            this.sName = sName;
+            this.key = key;
+            this.m = m;
+        }
+
+        public String getsName() {
+            return sName;
+        }
+
+        public void setsName(String sName) {
+            this.sName = sName;
+        }
+
+        public String getKey() {
+            return key;
+        }
+
+        public void setKey(String key) {
+            this.key = key;
+        }
+
+        public BiFunction<String, String, String> getM() {
+            return m;
+        }
+
+        public void setM(BiFunction<String, String, String> m) {
+            this.m = m;
+        }
     }
 
     public static class Result{
