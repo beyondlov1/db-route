@@ -41,6 +41,77 @@ import java.util.stream.Collectors;
  */
 public class SelectParser {
 
+    /**
+     * 添加加密字段
+     */
+    public static String parseInsert2(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
+        SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
+
+        TableCollectVisitor visitor = new TableCollectVisitor();
+        sqlStatement.accept(visitor);
+
+        if (sqlStatement instanceof SQLInsertStatement){
+            String tablename = ((SQLInsertStatement) sqlStatement).getTableSource().getExpr().toString();
+            Map<String, FocusParam> column2FocusParam = focusColumns.get(tablename);
+            if (column2FocusParam == null){
+                return sql;
+            }
+            List<SQLExpr> columns = ((SQLInsertStatement) sqlStatement).getColumns();
+            Map<Integer, FocusParam> toEncrypt = new HashMap<>();
+            int i = 0;
+            for (SQLExpr column : columns) {
+                if (column instanceof SQLIdentifierExpr){
+                    String name = ((SQLIdentifierExpr) column).getName();
+                    FocusParam focusParam = column2FocusParam.get(name);
+                    if (focusParam != null){
+                        toEncrypt.put(i, focusParam);
+                    }
+                }
+                i++;
+            }
+            Map<Integer, Integer> encrypted2ToEncrypt = new HashMap<>();
+            for (Integer index : toEncrypt.keySet()) {
+                FocusParam toEncryptItem = toEncrypt.get(index);
+                SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+                sqlIdentifierExpr.setParent(columns.get(index));
+                sqlIdentifierExpr.setName(toEncryptItem.getsName());
+                ((SQLInsertStatement) sqlStatement).addColumn(sqlIdentifierExpr);
+                encrypted2ToEncrypt.put(((SQLInsertStatement) sqlStatement).getColumns().size()-1, index);
+            }
+            List<SQLInsertStatement.ValuesClause> valuesClauses = ((SQLInsertStatement) sqlStatement).getValuesList();
+            for (SQLInsertStatement.ValuesClause valuesClause : valuesClauses) {
+                for (Integer index : encrypted2ToEncrypt.keySet()) {
+                    int encryptIndex = encrypted2ToEncrypt.get(index);
+                    FocusParam focusParam = toEncrypt.get(encryptIndex);
+                    SQLExpr sourceValue = valuesClause.getValues().get(encryptIndex);
+                    if (sourceValue instanceof SQLTextLiteralExpr) {
+                        String origin = ((SQLTextLiteralExpr) sourceValue).getText();
+                        SQLCharExpr sqlCharExpr = new SQLCharExpr();
+                        sqlCharExpr.setParent(sourceValue.getParent());
+                        sqlCharExpr.setText(focusParam.getM().apply(origin, focusParam.getKey()));
+                        if (sourceValue.getParent() instanceof SQLInsertStatement.ValuesClause) {
+                            ((SQLInsertStatement.ValuesClause) sourceValue.getParent()).addValue(sqlCharExpr);
+                        }
+                    }
+                    if (sourceValue instanceof SQLIntegerExpr) {
+                        Number number = ((SQLIntegerExpr) sourceValue).getNumber();
+                        String origin = number.toString();
+                        SQLCharExpr sqlCharExpr = new SQLCharExpr();
+                        sqlCharExpr.setParent(sourceValue.getParent());
+                        sqlCharExpr.setText(focusParam.getM().apply(origin, focusParam.getKey()));
+                        if (sourceValue.getParent() instanceof SQLInsertStatement.ValuesClause) {
+                            ((SQLInsertStatement.ValuesClause) sourceValue.getParent()).addValue(sqlCharExpr);
+                        }
+                    }
+                }
+            }
+        }
+        return sqlStatement.toString();
+    }
+
+    /**
+     * 替换加密字段
+     */
     public static String parseInsert(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
