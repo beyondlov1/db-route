@@ -1,5 +1,6 @@
 package com.beyond.tool;
 
+import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLExpr;
 import com.alibaba.druid.sql.ast.SQLObject;
@@ -24,6 +25,7 @@ import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.druid.sql.ast.statement.SQLSubqueryTableSource;
 import com.alibaba.druid.sql.ast.statement.SQLTableSource;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
+import com.alibaba.druid.sql.visitor.SchemaStatVisitor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -106,6 +108,7 @@ public class SelectParser {
                 }
             }
         }
+
         return sqlStatement.toString();
     }
 
@@ -155,6 +158,10 @@ public class SelectParser {
 
         TableCollectVisitor visitor = new TableCollectVisitor();
         sqlStatement.accept(visitor);
+
+        // 这个方法可以解析property中的owner属于哪个表, 在resolvedOwnerObj, 如果是子查询, 会是一个子查询的obj
+        SchemaStatVisitor schemaStatVisitor = SQLUtils.createSchemaStatVisitor(DbType.mysql);
+        sqlStatement.accept(schemaStatVisitor);
 
         List<SQLExprTableSource> sqlExprTableSource = visitor.getTableSources();
         List<TableName> list = new ArrayList<>();
