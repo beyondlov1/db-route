@@ -54,7 +54,11 @@ public class SelectParser {
 
 
     /**
-     * 添加加密字段
+     * 解析update语句, 并更改sql, 增加加密列
+     * @param sql 带?的sql: update db_ysb_order.ts_wholesale_order set phone = ? where phone in (?,?,?)
+     * @param parameters  ? 参数列表
+     * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
+     * @return  update db_ysb_order.ts_wholesale_order set phone = ?,phone_m = ? where phone_m in (?,?,?)
      */
     public static UpdateResult parseUpdate3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
@@ -145,9 +149,24 @@ public class SelectParser {
 
 
     public static class UpdateResult{
+        /**
+         * 替换后带?的sql
+         */
         private String replacedSql;
+        /**
+         * 新的完整parameter列表
+         */
         private List<Object> newParameters;
+        /**
+         * 要增加的parameter, <列表insertIndex, 值> , 这个map是有顺序的, 按insertIndex倒序, 使用时, 从大到小依次插入, 防止不断移位
+         * 要在 toUpdateParameterMap 之后再使用, 防止移位
+         */
         private Map<Integer, Object> toAddParameterMap;
+
+        /**
+         * 要替换的的parameter, 用于替换where中的?
+         * 要在 toAddParameterMap 之前使用
+         */
         private Map<Integer, Object> toUpdateParameterMap;
 
         public UpdateResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap, Map<Integer, Object> toUpdateParameterMap) {
@@ -201,7 +220,11 @@ public class SelectParser {
     }
 
     /**
-     * 添加加密字段
+     * 解析insert语句, 并更改sql, 增加加密列
+     * @param sql 带?的sql: insert into test.t_test (id, phone, name) values (?,?,?),(?,?,?),(?,?,9999)
+     * @param parameters  ? 参数列表
+     * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
+     * @return  insert into test.t_test (id, phone, name, phone_m) values (?,?,?,?),(?,?,?,?),(?,?,9999,?)
      */
     public static InsertResult parseInsert3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
@@ -312,8 +335,17 @@ public class SelectParser {
     }
 
     public static class InsertResult{
+        /**
+         * 替换后带?的sql
+         */
         private String replacedSql;
+        /**
+         * 新的完整parameter列表
+         */
         private List<Object> newParameters;
+        /**
+         * 要增加的parameter, <列表insertIndex, 值> , 这个map是有顺序的, 按insertIndex倒序, 使用时, 从大到小依次插入, 防止不断移位
+         */
         private Map<Integer, Object> toAddParameterMap;
 
         public InsertResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap) {
@@ -1029,8 +1061,18 @@ public class SelectParser {
     }
 
     public static class FocusParam {
+        /**
+         * 加密字段名
+         */
         private String sName;
+        /**
+         * 加密key
+         */
         private String key;
+
+        /**
+         * 加密方法 <target, key> -> 加密后
+         */
         private BiFunction<String, String, String> m;
 
         public FocusParam(String sName, String key, BiFunction<String, String, String> m) {
