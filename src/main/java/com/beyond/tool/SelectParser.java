@@ -16,6 +16,7 @@ import com.alibaba.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.druid.sql.ast.expr.SQLQueryExpr;
 import com.alibaba.druid.sql.ast.expr.SQLTextLiteralExpr;
+import com.alibaba.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.druid.sql.ast.statement.SQLJoinTableSource;
@@ -24,16 +25,24 @@ import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
 import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.druid.sql.ast.statement.SQLSubqueryTableSource;
 import com.alibaba.druid.sql.ast.statement.SQLTableSource;
+import com.alibaba.druid.sql.ast.statement.SQLUpdateSetItem;
+import com.alibaba.druid.sql.ast.statement.SQLUpdateStatement;
 import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
 import com.alibaba.druid.sql.visitor.SchemaStatVisitor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -42,6 +51,310 @@ import java.util.stream.Collectors;
  * @date 2021/01/25
  */
 public class SelectParser {
+
+
+    /**
+     * 添加加密字段
+     */
+    public static UpdateResult parseUpdate3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
+        SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
+
+        TableCollectVisitor visitor = new TableCollectVisitor();
+        sqlStatement.accept(visitor);
+
+        if (sqlStatement instanceof SQLUpdateStatement){
+            String tablename = ((SQLUpdateStatement) sqlStatement).getTableSource().toString();
+            Map<String, FocusParam> column2FocusParam = focusColumns.get(tablename);
+            if (column2FocusParam == null){
+                return null;
+            }
+
+            List<SQLUpdateSetItem> items = ((SQLUpdateStatement) sqlStatement).getItems();
+            List<Object> newParameters = new ArrayList<>();
+            Map<Integer, Object> toAddParameterMap = new TreeMap<>(Comparator.comparingInt(x-> (int) x).reversed());
+            Map<Integer, SQLUpdateSetItem> toAddSetItems = new TreeMap<>(Comparator.comparingInt(x-> (int) x).reversed());
+            Iterator<Object> iterator = parameters.iterator();
+            int i = 0 , itemIndex = 0;
+            for (SQLUpdateSetItem sqlUpdateSetItem : items) {
+                SQLExpr column = sqlUpdateSetItem.getColumn();
+                SQLExpr value = sqlUpdateSetItem.getValue();
+                if ( value instanceof SQLVariantRefExpr){
+                    Object parameter = iterator.next();
+                    newParameters.add(parameter);
+                    if (column instanceof SQLIdentifierExpr ){
+                        String name = ((SQLIdentifierExpr) column).getName();
+                        FocusParam focusParam = column2FocusParam.get(name);
+                        if (focusParam != null){
+                            SQLUpdateSetItem clone = sqlUpdateSetItem.clone();
+                            SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+                            sqlIdentifierExpr.setParent(sqlStatement);
+                            sqlIdentifierExpr.setName(focusParam.getsName());
+                            clone.setColumn(sqlIdentifierExpr);
+                            toAddSetItems.put(itemIndex + 1, clone);
+                            String encryptedValue = focusParam.getM().apply(parameter.toString(), focusParam.getKey());
+                            newParameters.add(encryptedValue);
+                            toAddParameterMap.put(i+1, encryptedValue);
+                        }
+                    }
+                    i++;
+                }
+                itemIndex ++;
+            }
+
+            for (Integer index : toAddSetItems.keySet()) {
+                items.add(index, toAddSetItems.get(index));
+            }
+
+            Map<Integer, Object> toUpdateParameterMap = new HashMap<>();
+            List<SQLVariantRefExpr> whereVariants = new ArrayList<>();
+            Map<SQLIdentifierExpr, String> toUpdateNameMap = new HashMap<>();
+            findChildren(((SQLUpdateStatement) sqlStatement).getWhere(), SQLVariantRefExpr.class, whereVariants);
+            for (SQLVariantRefExpr whereVariant : whereVariants) {
+                Object parameter = iterator.next();
+                Set<SQLExpr> sqlExprs = new HashSet<>();
+                sqlExprs.add(findFirstParent(whereVariant, SQLInListExpr.class));
+                sqlExprs.add(findFirstParent(whereVariant, SQLBinaryOpExpr.class));
+                for (SQLExpr sqlExpr : sqlExprs) {
+                    if (sqlExpr != null){
+                        SQLIdentifierExpr firstChild = findFirstChild(sqlExpr, SQLIdentifierExpr.class);
+                        if (firstChild != null) {
+                            String name = firstChild.getName();
+                            FocusParam focusParam = column2FocusParam.get(name);
+                            if (focusParam != null){
+                                String encryptedValue = focusParam.getM().apply(parameter.toString(), focusParam.getKey());
+                                newParameters.add(encryptedValue);
+                                toUpdateParameterMap.put(i, encryptedValue);
+                                toUpdateNameMap.put(firstChild, focusParam.getsName());
+                            }
+                        }
+                    }
+                }
+                i++;
+            }
+
+            for (SQLIdentifierExpr sqlIdentifierExpr : toUpdateNameMap.keySet()) {
+                sqlIdentifierExpr.setName(toUpdateNameMap.get(sqlIdentifierExpr));
+            }
+
+            System.out.println(sqlStatement.toString());
+            return new UpdateResult(sqlStatement.toString(), newParameters, toAddParameterMap,toUpdateParameterMap);
+        }
+
+        return null;
+    }
+
+
+    public static class UpdateResult{
+        private String replacedSql;
+        private List<Object> newParameters;
+        private Map<Integer, Object> toAddParameterMap;
+        private Map<Integer, Object> toUpdateParameterMap;
+
+        public UpdateResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap, Map<Integer, Object> toUpdateParameterMap) {
+            this.replacedSql = replacedSql;
+            this.newParameters = newParameters;
+            this.toAddParameterMap = toAddParameterMap;
+            this.toUpdateParameterMap = toUpdateParameterMap;
+        }
+
+        public String getReplacedSql() {
+            return replacedSql;
+        }
+
+        public void setReplacedSql(String replacedSql) {
+            this.replacedSql = replacedSql;
+        }
+
+        public List<Object> getNewParameters() {
+            return newParameters;
+        }
+
+        public void setNewParameters(List<Object> newParameters) {
+            this.newParameters = newParameters;
+        }
+
+        public Map<Integer, Object> getToAddParameterMap() {
+            return toAddParameterMap;
+        }
+
+        public void setToAddParameterMap(Map<Integer, Object> toAddParameterMap) {
+            this.toAddParameterMap = toAddParameterMap;
+        }
+
+        public Map<Integer, Object> getToUpdateParameterMap() {
+            return toUpdateParameterMap;
+        }
+
+        public void setToUpdateParameterMap(Map<Integer, Object> toUpdateParameterMap) {
+            this.toUpdateParameterMap = toUpdateParameterMap;
+        }
+
+        @Override
+        public String toString() {
+            return "UpdateResult{" +
+                    "replacedSql='" + replacedSql + '\'' +
+                    ", newParameters=" + newParameters +
+                    ", toAddParameterMap=" + toAddParameterMap +
+                    ", toUpdateParameterMap=" + toUpdateParameterMap +
+                    '}';
+        }
+    }
+
+    /**
+     * 添加加密字段
+     */
+    public static InsertResult parseInsert3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
+        SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
+
+        TableCollectVisitor visitor = new TableCollectVisitor();
+        sqlStatement.accept(visitor);
+
+        if (sqlStatement instanceof SQLInsertStatement){
+            String tablename = ((SQLInsertStatement) sqlStatement).getTableSource().getExpr().toString();
+            Map<String, FocusParam> column2FocusParam = focusColumns.get(tablename);
+            if (column2FocusParam == null){
+                return null;
+            }
+            List<SQLExpr> columns = ((SQLInsertStatement) sqlStatement).getColumns();
+            Map<Integer, FocusParam> toEncrypt = new HashMap<>();
+            int i = 0;
+            for (SQLExpr column : columns) {
+                if (column instanceof SQLIdentifierExpr){
+                    String name = ((SQLIdentifierExpr) column).getName();
+                    FocusParam focusParam = column2FocusParam.get(name);
+                    if (focusParam != null){
+                        toEncrypt.put(i, focusParam);
+                    }
+                }
+                i++;
+            }
+
+            // 解析要增加的列名
+            List<String> toAddColumnNames = new ArrayList<>();
+            for (Integer index : toEncrypt.keySet()) {
+                FocusParam toEncryptItem = toEncrypt.get(index);
+                toAddColumnNames.add(toEncryptItem.getsName());
+            }
+
+            Map<Integer, Object> parameterMap = new TreeMap<>(Comparator.comparingInt(x-> (int) x).reversed());
+            List<List<SQLVariantRefExpr>> toAddValueExprsList = new ArrayList<>();
+            List<List<Object>> valuesClauses = new ArrayList<>();
+            Iterator<Object> iterator = parameters.iterator();
+            for (SQLInsertStatement.ValuesClause valuesClause : ((SQLInsertStatement) sqlStatement).getValuesList()) {
+                List<Object> values = new ArrayList<>();
+                for (SQLExpr value : valuesClause.getValues()) {
+                    if (value instanceof SQLVariantRefExpr){
+                        Object next = iterator.next();
+                        values.add(next);
+                    }
+                    if (value instanceof SQLTextLiteralExpr) {
+                        values.add(((SQLTextLiteralExpr) value).getText());
+                    }
+                    if (value instanceof SQLIntegerExpr) {
+                        values.add(((SQLIntegerExpr) value).getValue());
+                    }
+                }
+                valuesClauses.add(values);
+            }
+            int valIndex = 0;
+            for (List<Object> values : valuesClauses) {
+                List<SQLVariantRefExpr> toAddValueExprs = new ArrayList<>();
+                for (Integer index : toEncrypt.keySet()) {
+                    FocusParam toEncryptItem = toEncrypt.get(index);
+                    Object value = values.get(index);
+                    if (value instanceof String){
+                        String encryptedValue = toEncryptItem.getM().apply(value.toString(), toEncryptItem.getKey());
+                        parameterMap.put(valIndex + values.size(), encryptedValue);
+                        values.add(encryptedValue);
+
+                        SQLVariantRefExpr sqlVariantRefExpr = new SQLVariantRefExpr();
+                        sqlVariantRefExpr.setName("?");
+                        toAddValueExprs.add(sqlVariantRefExpr);
+                    }
+                    if (value instanceof Number){
+                        String encryptedValue = toEncryptItem.getM().apply(value.toString(), toEncryptItem.getKey());
+                        parameterMap.put(valIndex + values.size(), encryptedValue);
+                        values.add(encryptedValue);
+
+                        SQLVariantRefExpr sqlVariantRefExpr = new SQLVariantRefExpr();
+                        sqlVariantRefExpr.setName("?");
+                        toAddValueExprs.add(sqlVariantRefExpr);
+                    }
+                }
+                toAddValueExprsList.add(toAddValueExprs);
+                valIndex += values.size();
+            }
+
+            for (String toAddColumnName : toAddColumnNames) {
+                SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
+                sqlIdentifierExpr.setParent(sqlStatement);
+                sqlIdentifierExpr.setName(toAddColumnName);
+                ((SQLInsertStatement) sqlStatement).addColumn(sqlIdentifierExpr);
+            }
+
+            int j = 0;
+            for (SQLInsertStatement.ValuesClause valuesClause : ((SQLInsertStatement) sqlStatement).getValuesList()) {
+                List<SQLVariantRefExpr> sqlVariantRefExprs = toAddValueExprsList.get(j);
+                for (SQLVariantRefExpr sqlVariantRefExpr : sqlVariantRefExprs) {
+                    sqlVariantRefExpr.setParent(valuesClause);
+                    valuesClause.addValue(sqlVariantRefExpr);
+                }
+                j++;
+            }
+
+            List<Object> newParameters = valuesClauses.stream().flatMap(Collection::stream).collect(Collectors.toList());
+            System.out.println(newParameters);
+            System.out.println(parameterMap);
+            return new InsertResult(sqlStatement.toString(),newParameters,parameterMap);
+        }
+
+        return null;
+    }
+
+    public static class InsertResult{
+        private String replacedSql;
+        private List<Object> newParameters;
+        private Map<Integer, Object> toAddParameterMap;
+
+        public InsertResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap) {
+            this.replacedSql = replacedSql;
+            this.newParameters = newParameters;
+            this.toAddParameterMap = toAddParameterMap;
+        }
+
+        public String getReplacedSql() {
+            return replacedSql;
+        }
+
+        public void setReplacedSql(String replacedSql) {
+            this.replacedSql = replacedSql;
+        }
+
+        public List<Object> getNewParameters() {
+            return newParameters;
+        }
+
+        public void setNewParameters(List<Object> newParameters) {
+            this.newParameters = newParameters;
+        }
+
+        public Map<Integer, Object> getToAddParameterMap() {
+            return toAddParameterMap;
+        }
+
+        public void setToAddParameterMap(Map<Integer, Object> toAddParameterMap) {
+            this.toAddParameterMap = toAddParameterMap;
+        }
+
+        @Override
+        public String toString() {
+            return "InsertResult{" +
+                    "replacedSql='" + replacedSql + '\'' +
+                    ", newParameters=" + newParameters +
+                    ", toAddParameterMap=" + toAddParameterMap +
+                    '}';
+        }
+    }
 
     /**
      * 添加加密字段
@@ -72,6 +385,7 @@ public class SelectParser {
                 i++;
             }
             Map<Integer, Integer> encrypted2ToEncrypt = new HashMap<>();
+            // 增加列名
             for (Integer index : toEncrypt.keySet()) {
                 FocusParam toEncryptItem = toEncrypt.get(index);
                 SQLIdentifierExpr sqlIdentifierExpr = new SQLIdentifierExpr();
@@ -682,11 +996,6 @@ public class SelectParser {
         List<SQLObject> children = sqlExpr.getChildren();
         if (CollectionUtils.isEmpty(children)){
             return;
-        }
-        for (SQLObject child : children) {
-            if (tClass.isAssignableFrom(child.getClass())){
-                list.add((T) child);
-            }
         }
         for (SQLObject child : children) {
             if (child instanceof SQLExpr){
