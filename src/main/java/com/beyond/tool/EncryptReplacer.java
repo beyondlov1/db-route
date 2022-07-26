@@ -31,9 +31,11 @@ import com.alibaba.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
 import com.alibaba.druid.sql.visitor.SchemaStatVisitor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -50,7 +52,7 @@ import java.util.stream.Collectors;
  * @author beyond
  * @date 2021/01/25
  */
-public class SelectParser {
+public class EncryptReplacer {
 
 
     /**
@@ -60,7 +62,7 @@ public class SelectParser {
      * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
      * @return  update db_ysb_order.ts_wholesale_order set phone = ?,phone_m = ? where phone_m in (?,?,?)
      */
-    public static UpdateResult parseUpdate3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
+    public static UpdateResult replaceUpdate3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
         TableCollectVisitor visitor = new TableCollectVisitor();
@@ -147,78 +149,6 @@ public class SelectParser {
         return null;
     }
 
-
-    public static class UpdateResult{
-        /**
-         * 替换后带?的sql
-         */
-        private String replacedSql;
-        /**
-         * 新的完整parameter列表
-         */
-        private List<Object> newParameters;
-        /**
-         * 要增加的parameter, <列表insertIndex, 值> , 这个map是有顺序的, 按insertIndex倒序, 使用时, 从大到小依次插入, 防止不断移位
-         * 要在 toUpdateParameterMap 之后再使用, 防止移位
-         */
-        private Map<Integer, Object> toAddParameterMap;
-
-        /**
-         * 要替换的的parameter, 用于替换where中的?
-         * 要在 toAddParameterMap 之前使用
-         */
-        private Map<Integer, Object> toUpdateParameterMap;
-
-        public UpdateResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap, Map<Integer, Object> toUpdateParameterMap) {
-            this.replacedSql = replacedSql;
-            this.newParameters = newParameters;
-            this.toAddParameterMap = toAddParameterMap;
-            this.toUpdateParameterMap = toUpdateParameterMap;
-        }
-
-        public String getReplacedSql() {
-            return replacedSql;
-        }
-
-        public void setReplacedSql(String replacedSql) {
-            this.replacedSql = replacedSql;
-        }
-
-        public List<Object> getNewParameters() {
-            return newParameters;
-        }
-
-        public void setNewParameters(List<Object> newParameters) {
-            this.newParameters = newParameters;
-        }
-
-        public Map<Integer, Object> getToAddParameterMap() {
-            return toAddParameterMap;
-        }
-
-        public void setToAddParameterMap(Map<Integer, Object> toAddParameterMap) {
-            this.toAddParameterMap = toAddParameterMap;
-        }
-
-        public Map<Integer, Object> getToUpdateParameterMap() {
-            return toUpdateParameterMap;
-        }
-
-        public void setToUpdateParameterMap(Map<Integer, Object> toUpdateParameterMap) {
-            this.toUpdateParameterMap = toUpdateParameterMap;
-        }
-
-        @Override
-        public String toString() {
-            return "UpdateResult{" +
-                    "replacedSql='" + replacedSql + '\'' +
-                    ", newParameters=" + newParameters +
-                    ", toAddParameterMap=" + toAddParameterMap +
-                    ", toUpdateParameterMap=" + toUpdateParameterMap +
-                    '}';
-        }
-    }
-
     /**
      * 解析insert语句, 并更改sql, 增加加密列
      * @param sql 带?的sql: insert into test.t_test (id, phone, name) values (?,?,?),(?,?,?),(?,?,9999)
@@ -226,7 +156,7 @@ public class SelectParser {
      * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
      * @return  insert into test.t_test (id, phone, name, phone_m) values (?,?,?,?),(?,?,?,?),(?,?,9999,?)
      */
-    public static InsertResult parseInsert3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
+    public static InsertResult replaceInsert3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
         TableCollectVisitor visitor = new TableCollectVisitor();
@@ -334,64 +264,13 @@ public class SelectParser {
         return null;
     }
 
-    public static class InsertResult{
-        /**
-         * 替换后带?的sql
-         */
-        private String replacedSql;
-        /**
-         * 新的完整parameter列表
-         */
-        private List<Object> newParameters;
-        /**
-         * 要增加的parameter, <列表insertIndex, 值> , 这个map是有顺序的, 按insertIndex倒序, 使用时, 从大到小依次插入, 防止不断移位
-         */
-        private Map<Integer, Object> toAddParameterMap;
-
-        public InsertResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap) {
-            this.replacedSql = replacedSql;
-            this.newParameters = newParameters;
-            this.toAddParameterMap = toAddParameterMap;
-        }
-
-        public String getReplacedSql() {
-            return replacedSql;
-        }
-
-        public void setReplacedSql(String replacedSql) {
-            this.replacedSql = replacedSql;
-        }
-
-        public List<Object> getNewParameters() {
-            return newParameters;
-        }
-
-        public void setNewParameters(List<Object> newParameters) {
-            this.newParameters = newParameters;
-        }
-
-        public Map<Integer, Object> getToAddParameterMap() {
-            return toAddParameterMap;
-        }
-
-        public void setToAddParameterMap(Map<Integer, Object> toAddParameterMap) {
-            this.toAddParameterMap = toAddParameterMap;
-        }
-
-        @Override
-        public String toString() {
-            return "InsertResult{" +
-                    "replacedSql='" + replacedSql + '\'' +
-                    ", newParameters=" + newParameters +
-                    ", toAddParameterMap=" + toAddParameterMap +
-                    '}';
-        }
-    }
-
     /**
      * 添加加密字段
+     * @param sql insert into test.t_test (id, phone, name) values (1223,122,1223)
+     * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
+     * @return insert into test.t_test (id, phone, name, phone_m) values (1223,122,1223,'122xxxx')
      */
-    public static String parseInsert2(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
+    public static String replaceInsert2(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
         TableCollectVisitor visitor = new TableCollectVisitor();
@@ -460,8 +339,11 @@ public class SelectParser {
 
     /**
      * 替换加密字段
+     * @param sql insert into test.t_test (id, phone, name) values (1223,122,1223)
+     * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
+     * @return insert into test.t_test (id, phone_m, name) values (1223,'122xxxx',1223)
      */
-    public static String parseInsert(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
+    public static String replaceInsert(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
         TableCollectVisitor visitor = new TableCollectVisitor();
@@ -491,14 +373,21 @@ public class SelectParser {
                 for (Integer index : toEncrypt.keySet()) {
                     FocusParam focusParam = toEncrypt.get(index);
                     SQLExpr sqlExpr = valuesClause.getValues().get(index);
-                    safeReplace(sqlExpr, focusParam);
+                    safeReplace(sqlExpr, new HashMap<>(), new HashMap<>(), focusParam);
                 }
             }
         }
         return sqlStatement.toString();
     }
 
-    public static Result parse(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
+    /**
+     * 解析select语句, 并更改sql, 增加加密列
+     * @param sql 带?的sql: select id, phone from test.t_test where phone = ?
+     * @param parameters  ? 参数列表
+     * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
+     * @return  select id, phone_m as phone from test.t_test where phone_m = ?
+     */
+    public static SelectResult replaceSelect3(String sql, List<Object> parameters, Map<String, Map<String, FocusParam>> focusColumns) {
 
         SQLStatement sqlStatement = SQLUtils.parseSingleMysqlStatement(sql);
 
@@ -508,6 +397,14 @@ public class SelectParser {
         // 这个方法可以解析property中的owner属于哪个表, 在resolvedOwnerObj, 如果是子查询, 会是一个子查询的obj
         SchemaStatVisitor schemaStatVisitor = SQLUtils.createSchemaStatVisitor(DbType.mysql);
         sqlStatement.accept(schemaStatVisitor);
+
+        Map<Integer, Pair<Integer, Object>> variantValueMap = new HashMap<>();
+        List<SQLVariantRefExpr> variantRefExprs = visitor.getVariantRefExprs();
+        int i = 0;
+        for (SQLVariantRefExpr variantRefExpr : variantRefExprs) {
+            variantValueMap.put(System.identityHashCode(variantRefExpr), Pair.of(i,parameters.get(i)));
+            i++;
+        }
 
         List<SQLExprTableSource> sqlExprTableSource = visitor.getTableSources();
         List<TableName> list = new ArrayList<>();
@@ -794,6 +691,7 @@ public class SelectParser {
             }
         }
 
+        Map<Integer, Object> toUpdateParameterMap = new HashMap<>();
         for (Property property : properties) {
             Map<String, FocusParam> replaceMapping = focusColumns.get(property.getTableName());
             if (replaceMapping == null || !replaceMapping.containsKey(property.getColumn())) {
@@ -823,7 +721,7 @@ public class SelectParser {
                 SQLPropertyExpr sqlPropertyExpr = (SQLPropertyExpr) property.getBottomItem();
                 if (sqlPropertyExpr != null) {
                     sqlPropertyExpr.setName(encryptedName);
-                    encryptProperty(property, focusParam);
+                    encryptProperty(property, variantValueMap,toUpdateParameterMap, focusParam);
                 }
             }
 
@@ -833,44 +731,67 @@ public class SelectParser {
                 SQLIdentifierExpr sqlIdentifierExpr = (SQLIdentifierExpr) property.getBottomItem();
                 if (sqlIdentifierExpr != null) {
                     sqlIdentifierExpr.setName(encryptedName);
-                    encryptProperty(property, focusParam);
+                    encryptProperty(property, variantValueMap,toUpdateParameterMap, focusParam);
                 }
             }
         }
 
 
-        Result result = new Result();
-        result.setSqlStatement(sqlStatement);
-        result.setReplacedSql(sqlStatement.toString());
-        result.setSelectProperties(properties.stream().filter(x -> x instanceof SelectProperty).map(x -> (SelectProperty) x).filter(SelectProperty::isRoot).collect(Collectors.toList()));
+        List<Object> newParameters = new ArrayList<>();
+        for (int j = 0; j < parameters.size(); j++) {
+            Object o = toUpdateParameterMap.get(j);
+            if (o != null){
+                newParameters.add(o);
+            }else{
+                newParameters.add(parameters.get(j));
+            }
+        }
 
-        return result;
+        SelectResult selectResult = new SelectResult();
+        selectResult.setReplacedSql(sqlStatement.toString());
+        selectResult.setToUpdateParameterMap(toUpdateParameterMap);
+        selectResult.setNewParameters(newParameters);
+        selectResult.setSelectProperties(properties.stream().filter(x -> x instanceof SelectProperty).map(x -> (SelectProperty) x).filter(SelectProperty::isRoot).collect(Collectors.toList()));
+
+        return selectResult;
+    }
+
+    /**
+     *
+     * @param sql 不带?
+     * @param focusColumns 加密信息  Map<表, Map<列名, 加密信息>>
+     */
+    public static SelectResult replaceSelect(String sql, Map<String, Map<String, FocusParam>> focusColumns) {
+        return replaceSelect3(sql, Collections.emptyList(), focusColumns);
     }
 
 
-    private static void encryptProperty(Property property, FocusParam focusParam) {
+    /*********************************************************************************************************************************************/
+
+
+    private static void encryptProperty(Property property, Map<Integer, Pair<Integer, Object>> variantValueMap,Map<Integer, Object> toUpdateParameterMap, FocusParam focusParam) {
         if (property instanceof BinaryOpConditionProperty) {
             SQLBinaryOpExpr item = (SQLBinaryOpExpr) property.getItem();
-            safeReplace(item.getLeft(), focusParam);
-            safeReplace(item.getRight(), focusParam);
+            safeReplace(item.getLeft(),variantValueMap, toUpdateParameterMap, focusParam);
+            safeReplace(item.getRight(), variantValueMap, toUpdateParameterMap, focusParam);
         }
 
         if (property instanceof BetweenProperty) {
             SQLBetweenExpr item = (SQLBetweenExpr) property.getItem();
-            safeReplace(item.getBeginExpr(), focusParam);
-            safeReplace(item.getEndExpr(), focusParam);
+            safeReplace(item.getBeginExpr(), variantValueMap, toUpdateParameterMap, focusParam);
+            safeReplace(item.getEndExpr(),variantValueMap, toUpdateParameterMap, focusParam);
         }
 
         if (property instanceof InProperty) {
             SQLInListExpr item = (SQLInListExpr) property.getItem();
             List<SQLExpr> targetList = item.getTargetList();
             for (SQLExpr sqlExpr : targetList) {
-                safeReplace(sqlExpr, focusParam);
+                safeReplace(sqlExpr, variantValueMap,toUpdateParameterMap, focusParam);
             }
         }
     }
 
-    private static void safeReplace(SQLExpr sqlExpr, FocusParam focusParam) {
+    private static void safeReplace(SQLExpr sqlExpr, Map<Integer, Pair<Integer, Object>> variantValueMap, Map<Integer, Object> toUpdateParameterMap, FocusParam focusParam) {
         if (sqlExpr instanceof SQLTextLiteralExpr) {
             String origin = ((SQLTextLiteralExpr) sqlExpr).getText();
             ((SQLTextLiteralExpr) sqlExpr).setText(focusParam.getM().apply(origin, focusParam.getKey()));
@@ -907,8 +828,16 @@ public class SelectParser {
                 ((SQLInsertStatement.ValuesClause) sqlExpr.getParent()).replace(sqlExpr, sqlCharExpr);
             }
         }
-    }
 
+        if (sqlExpr instanceof SQLVariantRefExpr) {
+            Pair<Integer, Object> parameterValue = variantValueMap.get(System.identityHashCode(sqlExpr));
+            Object value = parameterValue.getRight();
+            if (value != null) {
+                String encrypted = focusParam.getM().apply(focusParam.getKey(), value.toString());
+                toUpdateParameterMap.put(parameterValue.getLeft(),encrypted);
+            }
+        }
+    }
 
     /**
      * 根据别名和要查询的字段名递归查询, 为了处理临时表的情况
@@ -1060,6 +989,180 @@ public class SelectParser {
         return null;
     }
 
+    public static class UpdateResult{
+        /**
+         * 替换后带?的sql
+         */
+        private String replacedSql;
+        /**
+         * 新的完整parameter列表
+         */
+        private List<Object> newParameters;
+        /**
+         * 要增加的parameter, <列表insertIndex, 值> , 这个map是有顺序的, 按insertIndex倒序, 使用时, 从大到小依次插入, 防止不断移位
+         * 要在 toUpdateParameterMap 之后再使用, 防止移位
+         */
+        private Map<Integer, Object> toAddParameterMap;
+
+        /**
+         * 要替换的的parameter, 用于替换where中的?
+         * 要在 toAddParameterMap 之前使用
+         */
+        private Map<Integer, Object> toUpdateParameterMap;
+
+        public UpdateResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap, Map<Integer, Object> toUpdateParameterMap) {
+            this.replacedSql = replacedSql;
+            this.newParameters = newParameters;
+            this.toAddParameterMap = toAddParameterMap;
+            this.toUpdateParameterMap = toUpdateParameterMap;
+        }
+
+        public String getReplacedSql() {
+            return replacedSql;
+        }
+
+        public void setReplacedSql(String replacedSql) {
+            this.replacedSql = replacedSql;
+        }
+
+        public List<Object> getNewParameters() {
+            return newParameters;
+        }
+
+        public void setNewParameters(List<Object> newParameters) {
+            this.newParameters = newParameters;
+        }
+
+        public Map<Integer, Object> getToAddParameterMap() {
+            return toAddParameterMap;
+        }
+
+        public void setToAddParameterMap(Map<Integer, Object> toAddParameterMap) {
+            this.toAddParameterMap = toAddParameterMap;
+        }
+
+        public Map<Integer, Object> getToUpdateParameterMap() {
+            return toUpdateParameterMap;
+        }
+
+        public void setToUpdateParameterMap(Map<Integer, Object> toUpdateParameterMap) {
+            this.toUpdateParameterMap = toUpdateParameterMap;
+        }
+
+        @Override
+        public String toString() {
+            return "UpdateResult{" +
+                    "replacedSql='" + replacedSql + '\'' +
+                    ", newParameters=" + newParameters +
+                    ", toAddParameterMap=" + toAddParameterMap +
+                    ", toUpdateParameterMap=" + toUpdateParameterMap +
+                    '}';
+        }
+    }
+
+    public static class InsertResult{
+        /**
+         * 替换后带?的sql
+         */
+        private String replacedSql;
+        /**
+         * 新的完整parameter列表
+         */
+        private List<Object> newParameters;
+        /**
+         * 要增加的parameter, <列表insertIndex, 值> , 这个map是有顺序的, 按insertIndex倒序, 使用时, 从大到小依次插入, 防止不断移位
+         */
+        private Map<Integer, Object> toAddParameterMap;
+
+        public InsertResult(String replacedSql, List<Object> newParameters, Map<Integer, Object> toAddParameterMap) {
+            this.replacedSql = replacedSql;
+            this.newParameters = newParameters;
+            this.toAddParameterMap = toAddParameterMap;
+        }
+
+        public String getReplacedSql() {
+            return replacedSql;
+        }
+
+        public void setReplacedSql(String replacedSql) {
+            this.replacedSql = replacedSql;
+        }
+
+        public List<Object> getNewParameters() {
+            return newParameters;
+        }
+
+        public void setNewParameters(List<Object> newParameters) {
+            this.newParameters = newParameters;
+        }
+
+        public Map<Integer, Object> getToAddParameterMap() {
+            return toAddParameterMap;
+        }
+
+        public void setToAddParameterMap(Map<Integer, Object> toAddParameterMap) {
+            this.toAddParameterMap = toAddParameterMap;
+        }
+
+        @Override
+        public String toString() {
+            return "InsertResult{" +
+                    "replacedSql='" + replacedSql + '\'' +
+                    ", newParameters=" + newParameters +
+                    ", toAddParameterMap=" + toAddParameterMap +
+                    '}';
+        }
+    }
+
+    public static class SelectResult {
+        private String replacedSql;
+        private List<SelectProperty> selectProperties;
+        private Map<Integer, Object> toUpdateParameterMap;
+        private List<Object> newParameters;
+
+        public List<Object> getNewParameters() {
+            return newParameters;
+        }
+
+        public void setNewParameters(List<Object> newParameters) {
+            this.newParameters = newParameters;
+        }
+
+        public Map<Integer, Object> getToUpdateParameterMap() {
+            return toUpdateParameterMap;
+        }
+
+        public void setToUpdateParameterMap(Map<Integer, Object> toUpdateParameterMap) {
+            this.toUpdateParameterMap = toUpdateParameterMap;
+        }
+
+        public String getReplacedSql() {
+            return replacedSql;
+        }
+
+        public void setReplacedSql(String replacedSql) {
+            this.replacedSql = replacedSql;
+        }
+
+        public List<SelectProperty> getSelectProperties() {
+            return selectProperties;
+        }
+
+        public void setSelectProperties(List<SelectProperty> selectProperties) {
+            this.selectProperties = selectProperties;
+        }
+
+        @Override
+        public String toString() {
+            return "SelectResult{" +
+                    "replacedSql='" + replacedSql + '\'' +
+                    ", selectProperties=" + selectProperties +
+                    ", toUpdateParameterMap=" + toUpdateParameterMap +
+                    ", newParameters=" + newParameters +
+                    '}';
+        }
+    }
+
     public static class FocusParam {
         /**
          * 加密字段名
@@ -1103,45 +1206,6 @@ public class SelectParser {
 
         public void setM(BiFunction<String, String, String> m) {
             this.m = m;
-        }
-    }
-
-    public static class Result {
-        private String replacedSql;
-        private List<SelectProperty> selectProperties;
-        private SQLStatement sqlStatement;
-
-
-        public SQLStatement getSqlStatement() {
-            return sqlStatement;
-        }
-
-        public void setSqlStatement(SQLStatement sqlStatement) {
-            this.sqlStatement = sqlStatement;
-        }
-
-        public String getReplacedSql() {
-            return replacedSql;
-        }
-
-        public void setReplacedSql(String replacedSql) {
-            this.replacedSql = replacedSql;
-        }
-
-        public List<SelectProperty> getSelectProperties() {
-            return selectProperties;
-        }
-
-        public void setSelectProperties(List<SelectProperty> selectProperties) {
-            this.selectProperties = selectProperties;
-        }
-
-        @Override
-        public String toString() {
-            return "Result{" +
-                    "replacedSql='" + replacedSql + '\'' +
-                    ", selectProperties=" + selectProperties +
-                    '}';
         }
     }
 
@@ -1375,6 +1439,8 @@ public class SelectParser {
 
         private final List<SQLSelectItem> selectItems = new ArrayList<>();
 
+        private final List<SQLVariantRefExpr> variantRefExprs = new ArrayList<>();
+
 
         @Override
         public boolean visit(SQLExprTableSource x) {
@@ -1425,6 +1491,12 @@ public class SelectParser {
             return true;
         }
 
+        @Override
+        public boolean visit(SQLVariantRefExpr x) {
+            variantRefExprs.add(x);
+            return true;
+        }
+
         public List<SQLSelectQueryBlock> getSelectQueryBlocks() {
             return selectQueryBlocks;
         }
@@ -1455,6 +1527,10 @@ public class SelectParser {
 
         public List<SQLInSubQueryExpr> getInSubQueryCondition() {
             return inSubQueryCondition;
+        }
+
+        public List<SQLVariantRefExpr> getVariantRefExprs() {
+            return variantRefExprs;
         }
     }
 
